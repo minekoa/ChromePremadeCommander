@@ -11,8 +11,8 @@
       "scripts": ["background.js"]
     }
   },
-  "bluetooth":{
+  "bluetooth": {
     "socket": true,
-    "uuids": ["c15f671c-a63d-11e9-a32a-cbd6c068399a"]
+    "uuids": ["00001101-0000-1000-8000-00805f9b34fb"]
   }
 }

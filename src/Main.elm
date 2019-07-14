@@ -22,15 +22,25 @@ type alias BtAdapterState =
     , discovering : Bool
     }
 
+type alias BtDevice = --partical
+    { address     : String
+    , name        : Maybe String
+    , deviceClass : Maybe Int
+    , venderId    : Maybe Int
+    , productId   : Maybe Int
+    , deviceId    : Maybe Int
+    , paired      : Maybe Bool
+    , connected   : Maybe Bool
+    , uuids       : List String
+    }
 
 port adapterStateChanged : (BtAdapterState -> msg) -> Sub msg
-
-
+port getBtDevices : () -> Cmd msg
+port gotBtDevices : (List BtDevice -> msg) -> Sub msg
 
 init : Int -> ( Model, Cmd Msg )
 init _ =
-    ( Model "" [] "" Nothing, Cmd.none )
-
+    ( Model "" [] "" Nothing [], Cmd.none )
 
 
 type alias Model =
@@ -38,6 +48,7 @@ type alias Model =
     , response : List String
     , statusText : String
     , btAdapterState : Maybe BtAdapterState
+    , btDevices : List BtDevice
     }
 
 type alias BluetoothControl =
@@ -51,6 +62,7 @@ type Msg
     | Disconnect
     | ClearResponse
     | BtAdapterStateChanged BtAdapterState
+    | GotBtDevices (List BtDevice)
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -77,14 +89,22 @@ update msg model =
 
         BtAdapterStateChanged  adapterState ->
             ( { model | btAdapterState = Just adapterState }
+            , case adapterState.powered of
+                  True -> getBtDevices ()
+                  False -> Cmd.none
+            )
+
+        GotBtDevices devices ->
+            ( { model | btDevices = devices }
             , Cmd.none
             )
 
-
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    adapterStateChanged BtAdapterStateChanged
-
+    Sub.batch
+        [ adapterStateChanged BtAdapterStateChanged
+        , gotBtDevices GotBtDevices
+        ]
 
 
 view : Model -> Html Msg
@@ -97,6 +117,7 @@ view model =
                   div [] [ text "Bluetooth is turned off" ]
               Just adapterState ->
                   adapterStateView adapterState
+        , btDevicesView model
         ]
 
 
@@ -117,6 +138,15 @@ sendbox model =
                  ]
             [ text "Dissconnect" ]
         ]
+
+btDevicesView : Model -> Html Msg
+btDevicesView model =
+    div [] <|
+    List.map (\d -> div [] [ text d.address
+                           , text " : "
+                           , d.name |> Maybe.withDefault "" |> text
+                           ])
+        model.btDevices
 
 
 statusBox model =
