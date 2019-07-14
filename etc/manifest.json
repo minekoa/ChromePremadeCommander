@@ -1,0 +1,18 @@
+{
+  "manifest_version": 2,
+  "name": "Premade Commander",
+  "short_name": "Premede Commander",
+  "description": "A Commander of Premade AI",
+  "version": "0.0.1",
+  "minimum_chrome_version": "38",
+
+  "app": {
+    "background": {
+      "scripts": ["background.js"]
+    }
+  },
+  "bluetooth":{
+    "socket": true,
+    "uuids": ["c15f671c-a63d-11e9-a32a-cbd6c068399a"]
+  }
+}
