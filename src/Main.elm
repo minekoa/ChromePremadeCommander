@@ -127,8 +127,6 @@ update msg model =
             ( { model
                   | btAdapterState = Just adapterState
                   , btDevices = []
-                  , btDevice = Nothing
-                  , btSocketId = Nothing
               }
             , if adapterState.powered
               then getBtDevices ()
@@ -155,8 +153,7 @@ update msg model =
 
         BtSendSuccess nBytesSent ->
             ( { model
-                  | btSocketId = Nothing
-                  , statusText = "Sent " ++ (String.fromInt nBytesSent) ++ " bytes"
+                  | statusText = "Sent " ++ (String.fromInt nBytesSent) ++ " bytes"
               }
             , Cmd.none
             )
@@ -193,6 +190,7 @@ view model =
               Just adapterState ->
                   adapterStateView adapterState
         , btDevicesView model
+        , motionPanels model
         ]
 
 
@@ -258,6 +256,48 @@ adapterStateView adapterState =
             , div [] [ text "available  : " , text <| b2s adapterState.available ]
             , div [] [ text "discovering: " , text <| b2s adapterState.discovering ]
             ]
+
+motionPanels : Model -> Html Msg
+motionPanels model =
+    div [ style "display" "flex"
+        , style "flex-wrap" "wrap"
+        ]
+         [ motionItem "051F003D27" "ホーム" model
+         , motionItem "051F003E24" "どうぞ" model
+         , motionItem "051F003F25" "ワクワク" model
+         , motionItem "051F00405A" "コシニテ" model
+         , motionItem "051F00415B" "ようこそ" model
+         , motionItem "051F004258" "おねがい" model
+         , motionItem "051F004359" "バイバイ" model
+         , motionItem "051F00445E" "右にキス" model
+         , motionItem "051F00455F" "左にキス" model
+         , motionItem "051F00465C" "ピストル" model
+         , motionItem "051F00475D" "敬礼" model
+         , motionItem "051F004852" "え～ん" model
+         , motionItem "051F004953" "ハート" model
+         , motionItem "051F004A50" "キラッ" model
+         , motionItem "051F004B51" "あなたへ" model
+         , motionItem "051F004C56" "もんきー" model
+         , motionItem "051F004D57" "GOx2" model
+         , motionItem "051F004E54" "エアギター" model
+         , motionItem "051F004F55" "右ターン" model
+         , motionItem "051F00504A" "左ターン" model
+         ]
+
+motionItem : String -> String -> Model -> Html Msg
+motionItem hex name model =
+    let
+        ifSelected = \th el ->  if hex == model.sendMsg then th else el
+    in
+        div [ onClick (InputSendMsg hex)
+            , style "height" "3em"
+            , style "width" "5em"
+            , style "mergin" "2px"
+            , style "border" <| ifSelected "3px dotted red" "3px dotted silver"
+            , style "background-color" <| ifSelected "pink" "inherit"
+            ]
+        [ text name ]
+
 
 hexStrToAsciiList : String -> Maybe (List Int)
 hexStrToAsciiList hexString =
