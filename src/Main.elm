@@ -37,27 +37,33 @@ type alias BtDevice = --partical
 type alias BtDevAddress = String
 type alias BtSocketId = Int
 
-port adapterStateChanged : (BtAdapterState -> msg) -> Sub msg
-port getBtDevices : () -> Cmd msg
-port gotBtDevices : (List BtDevice -> msg) -> Sub msg
+port btAdapterStateChanged : (BtAdapterState -> msg) -> Sub msg
+port btRecieved : ( (Int, List Int) -> msg) -> Sub msg
+port btReceiveError : (String -> msg) -> Sub msg
+port btGetDevices : () -> Cmd msg
+port btGotDevices : (List BtDevice -> msg) -> Sub msg
 port btConnect : (BtDevAddress) -> Cmd msg
 port btConnected : (BtSocketId -> msg) -> Sub msg
 port btConnectionFailure : (String -> msg) -> Sub msg
+port btDisconnect : (BtSocketId) -> Cmd msg
+port btDisconnectFailure : (String -> msg) -> Sub msg
+port btDisconnectSuccess : (BtSocketId -> msg) -> Sub msg
 port btSend : (BtSocketId, List Int) -> Cmd msg
 port btSendFailure :  (String -> msg) -> Sub msg
 port btSendSuccess :  (Int -> msg) -> Sub msg
 
 init : Int -> ( Model, Cmd Msg )
 init _ =
-    ( Model "" [] "" Nothing []
+    ( Model "" [] "" Nothing Nothing []
           Nothing Nothing
     , Cmd.none )
 
 
 type alias Model =
     { sendMsg : String
-    , response : List String
+    , response : List (List Int)
     , statusText : String
+    , selectedDevice   : Maybe BtDevice
     , btAdapterState : Maybe BtAdapterState
     , btDevices : List BtDevice
 
@@ -78,11 +84,15 @@ type Msg
     | ClearResponse
     | SelectDevice BtDevice
     | BtAdapterStateChanged BtAdapterState
-    | GotBtDevices (List BtDevice)
-    | BtConnected (BtSocketId)
-    | BtConnectionFailure (String)
+    | BtGotDevices (List BtDevice)
+    | BtConnected BtSocketId
+    | BtConnectionFailure String
+    | BtDisconnectSuccess BtSocketId
+    | BtDisconnectFailure String
     | BtSendSuccess Int
     | BtSendFailure String
+    | BtRecieved (Int, (List Int))
+    | BtRecieveError String
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -102,15 +112,21 @@ update msg model =
             )
 
         Connect ->
-            ( model
-            , case model.btDevice of
-                  Just dev -> btConnect dev.address
-                  Nothing  -> Cmd.none
-            )
+            case model.selectedDevice of
+                  Just dev ->
+                      ( { model | btDevice = Just dev}
+                      , btConnect dev.address
+                      )
+                  Nothing  ->
+                      ( model, Cmd.none)
 
         Disconnect ->
             ( model
-            , Cmd.none
+            , case model.btSocketId of
+                  Just sockId ->
+                      btDisconnect sockId
+                  Nothing ->
+                      Cmd.none
             )
 
         ClearResponse ->
@@ -119,7 +135,7 @@ update msg model =
             )
 
         SelectDevice device ->
-            ( {model | btDevice = Just device}
+            ( {model | selectedDevice = Just device}
             , Cmd.none
             )
 
@@ -129,24 +145,48 @@ update msg model =
                   , btDevices = []
               }
             , if adapterState.powered
-              then getBtDevices ()
+              then btGetDevices ()
               else Cmd.none
             )
 
-        GotBtDevices devices ->
+        BtGotDevices devices ->
             ( { model | btDevices = devices }
             , Cmd.none
             )
 
         BtConnected socketId ->
-            ( { model | btSocketId = Just socketId }
+            ( { model
+                  | btSocketId = Just socketId
+                  , statusText = "Connected : " ++
+                    ( model.btDevice
+                        |> Maybe.andThen .name
+                        |> Maybe.withDefault ""
+                    )
+              }
             , Cmd.none
             )
 
         BtConnectionFailure errMsg ->
             ( { model
                   | btSocketId = Nothing
-                  , statusText = "Connection Error : " ++ errMsg
+                  , btDevice   = Nothing
+                  , statusText = "Connect Failed : " ++ errMsg
+              }
+            , Cmd.none
+            )
+
+        BtDisconnectSuccess _ ->
+            ( { model
+                  | btSocketId = Nothing
+                  , btDevice   = Nothing
+                  , statusText = "Disconnect : "
+              }
+            , Cmd.none
+            )
+
+        BtDisconnectFailure errMsg ->
+            ( { model
+                  | statusText = "Disconnect Failued : " ++ errMsg
               }
             , Cmd.none
             )
@@ -160,28 +200,51 @@ update msg model =
 
         BtSendFailure errMsg ->
             ( { model
-                  | btSocketId = Nothing
-                  , statusText = "Send Error : " ++ errMsg
+                  | statusText = "Sent Failed : " ++ errMsg
+              }
+            , Cmd.none
+            )
+
+        BtRecieved (nByteRecv, rcvData) ->
+            ( { model
+                  | response = rcvData :: model.response
+              }
+            , Cmd.none
+            )
+
+        BtRecieveError errMsg ->
+            ( { model
+                  | statusText = "Recieve Error : " ++ errMsg
               }
             , Cmd.none
             )
 
 
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ adapterStateChanged BtAdapterStateChanged
-        , gotBtDevices GotBtDevices
+        [ btAdapterStateChanged BtAdapterStateChanged
+        , btGotDevices BtGotDevices
         , btConnected BtConnected
         , btConnectionFailure BtConnectionFailure
+        , btDisconnectSuccess BtDisconnectSuccess
+        , btDisconnectFailure BtDisconnectFailure
         , btSendFailure BtSendFailure
         , btSendSuccess BtSendSuccess
+        , btRecieved BtRecieved
+        , btReceiveError BtRecieveError
         ]
 
 
 view : Model -> Html Msg
 view model =
-    div []
+    div [ style "display" "flex"
+        , style "flex-direction" "column"
+        , style "height" "100%"
+        , style "box-sizing" "border-box"
+        , style "padding" "1em"
+        ]
         [ sendbox model
         , statusBox model
         , case model.btAdapterState of
@@ -191,6 +254,7 @@ view model =
                   adapterStateView adapterState
         , btDevicesView model
         , motionPanels model
+        , recieveView model
         ]
 
 
@@ -215,23 +279,46 @@ sendbox model =
             [ text "Dissconnect" ]
         , button [ type_ "button"
                  , onClick Connect
-                 , disabled <| if model.btDevice == Nothing then True else False
+                 , disabled <| if model.selectedDevice == Nothing then True else False
                  ]
             [ text "Connect" ]
+        , case model.btDevice of
+              Just device -> text <|
+                  " ["
+                      ++ (if model.btSocketId == Nothing then "connecting.. " else" connected: ")
+                      ++ (device.name |> Maybe.withDefault "")
+                      ++ "]"
+              Nothing ->
+                  text ""
         ]
 
 btDevicesView : Model -> Html Msg
 btDevicesView model =
     div [] <|
     List.map (\d -> div [ onClick (SelectDevice d)
-                        , style "background-color" (if Just d == model.btDevice then "pink" else "inherit")
+                        , style "background-color" (if Just d == model.selectedDevice then "pink" else "inherit")
                         ]
-                  [ text d.address
+                  [ d.paired    |> Maybe.withDefault False |> (\p -> if p then "P" else "-") |> text
+                  , d.connected |> Maybe.withDefault False |> (\p -> if p then "C" else "-") |> text
+                  , text " "
+                  , text d.address
                   , text " : "
                   , d.name |> Maybe.withDefault "" |> text
                   ])
         model.btDevices
 
+
+recieveView : Model -> Html Msg
+recieveView model =
+    div [ style "overflow" "auto"
+        , style "flex-grow" "1"
+        , style "border" "3px dotted gray"
+        ]
+        ( List.map
+              (asciiListToHexString >> Maybe.withDefault "(Invalid Format)" >> \s -> div [] [text s])
+                  model.response
+        |> List.reverse
+        )
 
 statusBox model =
     div []
@@ -292,7 +379,7 @@ motionItem hex name model =
         div [ onClick (InputSendMsg hex)
             , style "height" "3em"
             , style "width" "5em"
-            , style "mergin" "2px"
+            , style "margin" "2px"
             , style "border" <| ifSelected "3px dotted red" "3px dotted silver"
             , style "background-color" <| ifSelected "pink" "inherit"
             ]
@@ -340,3 +427,45 @@ hexCharToInt c =
         'E' -> Just 14
         'F' -> Just 15
         _   -> Nothing
+
+asciiListToHexString : List Int -> Maybe String
+asciiListToHexString asciis =
+    asciiListToHexString_ asciis []
+
+
+asciiListToHexString_ : List Int -> List Char -> Maybe String
+asciiListToHexString_ asciis acc =
+    case asciis of
+        x :: xs ->
+            case ( x // 16 |> intToHexChar
+                 , x |> modBy 16 |> intToHexChar
+                 )
+            of
+                (Just a, Just b) ->
+                    asciiListToHexString_ xs  (b :: a :: ' ' :: acc)
+                _ ->
+                    Nothing
+        [] ->
+            acc |> List.reverse |> String.fromList  |> Just
+
+
+intToHexChar : Int -> Maybe Char
+intToHexChar i =
+    case i of
+         0  -> Just '0'
+         1  -> Just '1'
+         2  -> Just '2'
+         3  -> Just '3'
+         4  -> Just '4'
+         5  -> Just '5'
+         6  -> Just '6'
+         7  -> Just '7'
+         8  -> Just '8'
+         9  -> Just '9'
+         10 -> Just 'A'
+         11 -> Just 'B'
+         12 -> Just 'C'
+         13 -> Just 'D'
+         14 -> Just 'E'
+         15 -> Just 'F'
+         _  -> Nothing

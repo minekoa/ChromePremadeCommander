@@ -13,11 +13,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     chrome.bluetooth.onAdapterStateChanged.addListener(
         function (adapter) {
-            app.ports.adapterStateChanged.send(adapter)
+            app.ports.btAdapterStateChanged.send(adapter)
         }
     );
 
-    app.ports.getBtDevices.subscribe( function (msg) {
+    chrome.bluetoothSocket.onReceive.addListener(
+        function (info) {
+            const numbytes = info.data.byteLength;
+            const bufView  = new Uint8Array(info.data);
+            let rcvdata = [];
+            for (var i=0; i< info.data.byteLength; i++) {
+                rcvdata.push(bufView[i]);
+            }
+
+            app.ports.btRecieved.send([numbytes, rcvdata]);
+        }
+    );
+
+    chrome.bluetoothSocket.onReceiveError.addListener(
+        function (errorInfo) {
+            app.ports.btReceiveError.send(errorInfo.errorMessage)
+        }
+    );
+
+    app.ports.btGetDevices.subscribe( function (msg) {
         chrome.bluetooth.getDevices(function(devices) {
             const ds = devices.map( function (d) {
                 return  { address     : d.address,
@@ -31,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
                           uuids       : ifUndef([]  , d.uuids)
                         };
             });
-            app.ports.gotBtDevices.send(ds);
+            app.ports.btGotDevices.send(ds);
         });
     });
 
@@ -56,6 +75,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             );
         });
+    });
+
+    app.ports.btDisconnect.subscribe( function (socketId) {
+        chrome.bluetoothSocket.disconnect(socketId);
+        if (chrome.runtime.lastError) {
+            app.ports.btDisconnectFailure.send(chrome.runtime.lastError.message)
+        }
+        else {
+            app.ports.btDisconnectSuccess.send(socketId)
+        }
     });
 
     app.ports.btSend.subscribe( function ([socketId, charlist]) {
