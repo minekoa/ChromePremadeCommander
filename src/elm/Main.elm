@@ -24,10 +24,17 @@ init _ =
           Nothing Nothing
     , Cmd.none )
 
+type BtCommunicationDirecion = Send | Recv
+
+type alias BtCommunicationLogItem =
+    { direction : BtCommunicationDirecion
+    , message   : (List Int)
+    }
+
 
 type alias Model =
     { sendMsg : String
-    , response : List (List Int)
+    , btCommunicationLog : List BtCommunicationLogItem
     , statusText : String
     , selectedDevice   : Maybe BtDevice
     , btAdapterState : Maybe BtAdapterState
@@ -69,13 +76,16 @@ update msg model =
             )
 
         SendMsg ->
-            ( model
-            , case (model.btSocketId, hexStrToAsciiList model.sendMsg) of
-                  (Just sockId, Just sndmsg) ->
-                      btSend (sockId, sndmsg)
-                  _ ->
-                      Cmd.none
-            )
+            case (model.btSocketId, hexStrToAsciiList model.sendMsg) of
+                (Just sockId, Just sndmsg) ->
+                    ( { model
+                          | btCommunicationLog
+                            = BtCommunicationLogItem Send sndmsg :: model.btCommunicationLog
+                      }
+                    , btSend (sockId, sndmsg)
+                    )
+                _ ->
+                    (model, Cmd.none)
 
         Connect ->
             case model.selectedDevice of
@@ -96,7 +106,7 @@ update msg model =
             )
 
         ClearResponse ->
-            ( { model | response = [] }
+            ( { model | btCommunicationLog = [] }
             , Cmd.none
             )
 
@@ -173,7 +183,8 @@ update msg model =
 
         BtRecieved (nByteRecv, rcvData) ->
             ( { model
-                  | response = rcvData :: model.response
+                  | btCommunicationLog
+                    = BtCommunicationLogItem Recv rcvData :: model.btCommunicationLog
               }
             , Cmd.none
             )
@@ -245,7 +256,10 @@ sendbox model =
             [ text "Dissconnect" ]
         , button [ type_ "button"
                  , onClick Connect
-                 , disabled <| if model.selectedDevice == Nothing then True else False
+                 , disabled <| if (model.selectedDevice == Nothing)
+                               || (model.btSocketId /= Nothing)
+                               then True
+                               else False
                  ]
             [ text "Connect" ]
         , case model.btDevice of
@@ -280,11 +294,20 @@ recieveView model =
         , style "flex-grow" "1"
         , style "border" "3px dotted gray"
         ]
-        ( List.map
-              (asciiListToHexString >> Maybe.withDefault "(Invalid Format)" >> \s -> div [] [text s])
-                  model.response
-        |> List.reverse
-        )
+        (List.map logItemView model.btCommunicationLog |> List.reverse)
+
+logItemView : BtCommunicationLogItem -> Html Msg
+logItemView commLog =
+    div []
+        [ text <| case commLog.direction of
+                      Send -> " > "
+                      Recv -> " < "
+        , commLog.message
+            |> asciiListToHexString
+            |> Maybe.withDefault "(Invalid Format)"
+            |> text
+        ]
+
 
 statusBox model =
     div []
@@ -335,6 +358,9 @@ motionPanels model =
          , motionItem "051F004E54" "エアギター" model
          , motionItem "051F004F55" "右ターン" model
          , motionItem "051F00504A" "左ターン" model
+         , motionItem "051F00011B" "ダンス再生" model
+         , motionItem "051E00051E" "Lチカ" model
+         , motionItem "04050001" "モーション停止" model
          ]
 
 motionItem : String -> String -> Model -> Html Msg
