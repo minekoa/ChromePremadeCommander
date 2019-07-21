@@ -4,6 +4,7 @@ import Browser exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
+import Bitwise exposing (xor)
 
 import Bluetooth exposing (..)
 
@@ -51,6 +52,7 @@ type alias BluetoothControl =
 
 type Msg
     = InputSendMsg String
+    | ValidateSndMsg
     | SendMsg
     | Connect
     | Disconnect
@@ -74,6 +76,21 @@ update msg model =
             ( { model | sendMsg = txt }
             , Cmd.none
             )
+
+        ValidateSndMsg ->
+            case hexStrToAsciiList model.sendMsg of
+                Just intList ->
+                    ( { model
+                          | sendMsg = intList
+                              |> validateSendMsg
+                              |> asciiListToHexString
+                              |> Maybe.andThen ((String.filter (\c -> c /= ' ')) >> Just)
+                              |> Maybe.withDefault model.sendMsg
+                      }
+                    , Cmd.none
+                    )
+                Nothing ->
+                    (model, Cmd.none)
 
         SendMsg ->
             case (model.btSocketId, hexStrToAsciiList model.sendMsg) of
@@ -244,6 +261,12 @@ sendbox model =
                 , style "background-color" <| if (hexStrToAsciiList model.sendMsg) == Nothing then "pink" else "inherit"
                 ]
               []
+        , button [ type_ "button"
+                 , onClick ValidateSndMsg
+                 , disabled <| if model.sendMsg == "" then True else False
+                 ]
+            [ text "Validate" ]
+
         , button [ type_ "button"
                  , onClick SendMsg
                  , disabled <| if model.btSocketId == Nothing then True else False
@@ -461,3 +484,20 @@ intToHexChar i =
          14 -> Just 'E'
          15 -> Just 'F'
          _  -> Nothing
+
+
+validateSendMsg : List Int -> List Int
+validateSendMsg msg =
+    case msg of
+        _ :: tail ->
+            let
+                len  = List.length msg
+                body = List.take (len - 2) tail
+                cb   = calculateCheckByte (len :: body)
+            in
+                len :: (body ++ [cb])
+        [] -> []
+
+calculateCheckByte : List Int -> Int
+calculateCheckByte bytes =
+    List.foldl xor 0 bytes
