@@ -2,34 +2,30 @@ ELM_MAKE=elm make
 
 OUTDIR=PremaidCommander
 SRCDIR=src
-ETCDIR=etc
 
 ELMMAIN=Main
-MANIFEST=manifest.json
-BACKGROUNDJS=background.js
-ELMIMPORTJS=elm_import.js
-INDEXHTML=index.html
+ELMFILES=$(ELMMAIN).elm Bluetooth.elm
+JSFILES=elm_import.js bluetooth.js
+CHAPPS_FILES=manifest.json index.html background.js
 
-PKGFILES=$(OUTDIR)/$(ELMMAIN).js $(OUTDIR)/$(MANIFEST) $(OUTDIR)/$(BACKGROUNDJS) $(OUTDIR)/$(INDEXHTML) $(OUTDIR)/$(ELMIMPORTJS)
+PKGFILES=$(CHAPPS_FILES:%=$(OUTDIR)/%) $(JSFILES:%=$(OUTDIR)/%) $(OUTDIR)/$(ELMMAIN).js
+
+.PHONY: all clean
 
 all: $(OUTDIR) $(PKGFILES)
 	zip archive -r $(OUTDIR)
 
-$(OUTDIR)/$(ELMMAIN).js : $(SRCDIR)/elm/$(ELMMAIN).elm
+$(JSFILES:%=$(OUTDIR)/%) : $(JSFILES:%=$(SRCDIR)/js/%)
+	cp $(SRCDIR)/js/$(notdir $@) $@
+
+$(CHAPPS_FILES:%=$(OUTDIR)/%) : $(CHAPPS_FILES:%=$(SRCDIR)/%)
+	cp $(SRCDIR)/$(notdir $@) $@
+
+$(OUTDIR)/$(ELMMAIN).js : $(ELMFILES:%=$(SRCDIR)/elm/%)
 	$(ELM_MAKE) $(SRCDIR)/elm/$(ELMMAIN).elm --output=$(OUTDIR)/$(ELMMAIN).js
-
-$(OUTDIR)/$(MANIFEST) : $(ETCDIR)/$(MANIFEST)
-	cp $(ETCDIR)/$(MANIFEST) $(OUTDIR)/$(MANIFEST)
-
-$(OUTDIR)/$(BACKGROUNDJS) : $(SRCDIR)/$(BACKGROUNDJS)
-	cp $(SRCDIR)/$(BACKGROUNDJS) $(OUTDIR)/$(BACKGROUNDJS)
-
-$(OUTDIR)/$(ELMIMPORTJS) : $(SRCDIR)/js/$(ELMIMPORTJS)
-	cp $(SRCDIR)/js/$(ELMIMPORTJS) $(OUTDIR)/$(ELMIMPORTJS)
-
-$(OUTDIR)/$(INDEXHTML) : $(SRCDIR)/$(INDEXHTML)
-	cp $(SRCDIR)/$(INDEXHTML) $(OUTDIR)/$(INDEXHTML)
-
 
 $(OUTDIR):
 	mkdir $@
+
+clean:
+	rm -rf $(OUTDIR)
