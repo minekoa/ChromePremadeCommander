@@ -8,12 +8,17 @@ ELMFILES=$(ELMMAIN).elm Bluetooth.elm
 JSFILES=elm_import.js bluetooth.js
 CHAPPS_FILES=manifest.json index.html background.js
 
-PKGFILES=$(CHAPPS_FILES:%=$(OUTDIR)/%) $(JSFILES:%=$(OUTDIR)/%) $(OUTDIR)/$(ELMMAIN).js
+ZIP_FILE=PremedeCommander.zip
+
+PKGFILES=$(CHAPPS_FILES) $(JSFILES) $(ELMMAIN).js
 
 .PHONY: all clean
 
-all: $(OUTDIR) $(PKGFILES)
-	zip archive -r $(OUTDIR)
+all: $(ZIP_FILE)
+
+
+$(ZIP_FILE) : $(OUTDIR) $(PKGFILES:%=$(OUTDIR)/%)
+	zip $(ZIP_FILE) -r $(OUTDIR)
 
 $(JSFILES:%=$(OUTDIR)/%) : $(JSFILES:%=$(SRCDIR)/js/%)
 	cp $(SRCDIR)/js/$(notdir $@) $@
@@ -29,3 +34,4 @@ $(OUTDIR):
 
 clean:
 	rm -rf $(OUTDIR)
+	rm -rf $(ZIP_FILE)
